@@ -23,17 +23,17 @@ def parse_arguments():
     parser = argparse.ArgumentParser(description="Configure simulation parameters")
 
     #Residence populations. The number of students in residence at each post-secondary institution (default ratio roughly corresponds to real-life numbers)
-    parser.add_argument("--queens_residence_pop", type=int, default=1000, help="Enter the Queen's residence population")
-    parser.add_argument("--slc_residence_pop", type=int, default=500, help="Enter the SLC residence population")
-    parser.add_argument("--rmc_residence_pop", type=int, default=400, help="Enter the RMC residence population")
+    parser.add_argument("--queens_residence_pop", type=int, default=100, help="Enter the Queen's residence population")
+    parser.add_argument("--slc_residence_pop", type=int, default=50, help="Enter the SLC residence population")
+    parser.add_argument("--rmc_residence_pop", type=int, default=40, help="Enter the RMC residence population")
 
     #Total post-secondary school populations
-    parser.add_argument("--queens_pop", type=int, default=2500, help="Enter the total Queen's population")
-    parser.add_argument("--slc_pop", type=int, default=600, help="Enter the total SLC population")
-    parser.add_argument("--rmc_pop", type=int, default=400, help="Enter the total RMC population")
+    parser.add_argument("--queens_pop", type=int, default=250, help="Enter the total Queen's population")
+    parser.add_argument("--slc_pop", type=int, default=60, help="Enter the total SLC population")
+    parser.add_argument("--rmc_pop", type=int, default=40, help="Enter the total RMC population")
 
     #Kingston population. Roughly the total number of agents that will be in the simulation (can be up to 4 more due to home population generation)
-    parser.add_argument("--kingston_pop", type=int, default=10000, help="Enter the total population")
+    parser.add_argument("--kingston_pop", type=int, default=1000, help="Enter the total population")
 
     #Number of residences at each post-secondary institution (except for SLC, which only has 1 residence)
     parser.add_argument("--queens_residences", type=int, default=10, help="Enter the number of Queen's residences - max of 30")
@@ -78,7 +78,11 @@ class CovidAgent(mesa.Agent):
         #A child of the model class
         super().__init__(unique_id, model)
 
-        self.age_bracket = agent_info_all[2]
+        self.age_bracket = agent_info_all[0][2]
+
+        self.store_1 = agent_info_all[0][5]
+        self.store_2 = agent_info_all[0][6]
+
         self.isolating = False
 
         #Assigns them as infectious from the start depending on some probability (10% here)
@@ -193,21 +197,24 @@ class CovidLocation(mesa.Agent):
             #For all agents at the same location as the agent in question, test to see if they infect the agent in question
             for agent_at_same_loc in self.agents_at_loc:
 
-                #If an agent is infectious and not equalt to the current agent (although since the agent cannot be both susceptible and infectious, this would never happen)
-                if ((agent_at_same_loc.infectious) and (agent_at_same_loc != current_agent) and (not agent_at_same_loc.isolating)):
 
-                    #The odds of an agent contracting the disease from another agent is (R0/(time in infectious class)) / (# of susceptibles at the location)
-                    #This makes it so that each agent will infect approximately 3.32 agents, lining up with the definition of R0
-                    #We multiply by the mask and vaccination factors if applicable for the agents in question
-                    #Note that the infectious agent does not have their infectivity reduced by being vaccinated - if they are infected, they are spreading it the same (this is an assumption)
-                    odds = (agent_at_same_loc.masked_factor * current_agent.masked_factor) * (current_agent.vaccinated_factor) * (3.32 / 16) / (self.susceptible_count)
+                if (self.model.day_of_week == 12 and agent_at_same_loc.store_1 == self.loc_id) or (self.model.day_of_week == 14 and agent_at_same_loc.store_2 == self.loc_id) or (not (self.model.day_of_week in (12, 14))):
 
-                    #If the infection is successful, then the agent in question becomes infected
-                    against = np.random.uniform(0,1)
-                    if (against < odds):
-                        #Add 1 to the number of agents infected
-                        agent_at_same_loc.spread_to += 1
-                        newly_exposed = True
+                    #If an agent is infectious and not equalt to the current agent (although since the agent cannot be both susceptible and infectious, this would never happen)
+                    if ((agent_at_same_loc.infectious) and (agent_at_same_loc != current_agent) and (not agent_at_same_loc.isolating)):
+
+                        #The odds of an agent contracting the disease from another agent is (R0/(time in infectious class)) / (# of susceptibles at the location)
+                        #This makes it so that each agent will infect approximately 3.32 agents, lining up with the definition of R0
+                        #We multiply by the mask and vaccination factors if applicable for the agents in question
+                        #Note that the infectious agent does not have their infectivity reduced by being vaccinated - if they are infected, they are spreading it the same (this is an assumption)
+                        odds = (agent_at_same_loc.masked_factor * current_agent.masked_factor) * (current_agent.vaccinated_factor) * (3.32 / 16) / (self.susceptible_count)
+
+                        #If the infection is successful, then the agent in question becomes infected
+                        against = np.random.uniform(0,1)
+                        if (against < odds):
+                            #Add 1 to the number of agents infected
+                            agent_at_same_loc.spread_to += 1
+                            newly_exposed = True
             
             #Update the agent in question's status and reset their class timer
             if newly_exposed:
@@ -299,7 +306,7 @@ class CovidLocation(mesa.Agent):
         for item in self.agents_at_loc:
 
             if ((self.model.day_of_week % 2 == 1 and self.loc_type == "home") or (self.model.day_of_week in (2,4,6,8,10) and self.loc_type == "job")
-            or (self.model.day_of_week == 12 and self.loc_type == "store_1") or (self.model.day_of_week == 14 and self.loc_type == "store_2")):
+            or (self.model.day_of_week == 12 and self.loc_type == "store" and item.store_1 == self.loc_id) or (self.model.day_of_week == 14 and self.loc_type == "store" and item.store_2 == self.loc_id)):
 
                 #Update the agent's class and the time that they have been in the class
                 self.update_class(item)
@@ -435,8 +442,8 @@ location_details = info[0]
 agent_details = info[1]
 organized_locs = info[2]
 
+#print(agent_details)
 
-'''
 for k in range (500):
 
     print("TRIAL: " + str(k))
@@ -476,10 +483,10 @@ data_dict = {
 }
 
 
-json_object = json.dumps(data_dict, indent=4)    
+#json_object = json.dumps(data_dict, indent=4)    
 
-with open("real_geo_500_trials_SEIR.json", "w") as outfile:
-    outfile.write(json_object)
+#with open("real_geo_500_trials_SEIR.json", "w") as outfile:
+#    outfile.write(json_object)
 
 '''
 susceptible_counts_total = []
@@ -531,12 +538,12 @@ data_dict = {
     "Recovered": str(recovered_counts_total),
     "Time_step": str(time_step_total)
 }
+'''
 
+#json_object = json.dumps(data_dict, indent=4)    
 
-json_object = json.dumps(data_dict, indent=4)    
-
-with open("random_geo_500_trials_SEIR.json", "w") as outfile:
-    outfile.write(json_object)
+#with open("random_geo_500_trials_SEIR.json", "w") as outfile:
+#    outfile.write(json_object)
 
 
 #plt.plot(time_step_trial, infectious_counts_trial, color='red', linewidth=0.5)
